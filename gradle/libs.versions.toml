@@ -1,0 +1,5 @@
+[versions]
+ksp = "2.1.0-1.0.29"
+
+[libraries]
+symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
