@@ -1,8 +1,13 @@
 [versions]
 ksp = "2.1.0-1.0.29"
+kotlinpoet = "2.0.0"
+hikaricp = "6.2.1"
 
 [libraries]
 symbol-processing-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
+kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 
 [plugins]
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
