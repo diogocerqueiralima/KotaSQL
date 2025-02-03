@@ -3,3 +3,4 @@ plugins {
 }
 rootProject.name = "KotaSQL"
 include("processor")
+include("example")
