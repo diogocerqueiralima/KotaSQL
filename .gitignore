@@ -4,3 +4,5 @@ gradle/wrapper
 gradlew.bat
 gradlew
 .gradle
+/processor/build
+/example/build

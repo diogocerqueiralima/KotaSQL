@@ -20,7 +20,7 @@ data class User(
 interface UserDao {
 
     @Insert
-    fun insert(user: User)
+    fun insert(user: User): User
 
 }
 
