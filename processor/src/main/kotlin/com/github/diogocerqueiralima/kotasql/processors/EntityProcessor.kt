@@ -76,7 +76,7 @@ class EntityProcessor(
 
             val file = codeGenerator.createNewFile(
                 dependencies = Dependencies(false),
-                packageName = "generated",
+                packageName = "generated/sql",
                 fileName = "${tableName}_schema",
                 extensionName = "sql"
             )

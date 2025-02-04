@@ -11,6 +11,7 @@ repositories {
 }
 
 dependencies {
+    implementation(libs.postgresql)
     implementation(libs.hikaricp)
     implementation(project(":processor"))
     ksp(project(":processor"))

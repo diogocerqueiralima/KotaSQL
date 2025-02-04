@@ -6,8 +6,10 @@ import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ksp.toClassName
+import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
+import kotlin.math.log
 
 class DaoProcessor(
 
@@ -37,6 +39,7 @@ class DaoProcessor(
             val packageName = classDeclaration.packageName.asString()
             val className = "${classDeclaration.simpleName.asString()}Impl"
             val fileBuilder = FileSpec.builder(packageName, className)
+                .addImport("java.sql", "Statement")
             val typeSpecBuilder = TypeSpec.classBuilder(className)
                 .addSuperinterface(classDeclaration.toClassName())
                 .primaryConstructor(
@@ -73,7 +76,9 @@ class DaoProcessor(
                 .returns(function.returnType?.toTypeName() ?: Unit::class.asClassName())
                 .addParameters(
                     function.parameters.map { parameter ->
-                        ParameterSpec.builder(parameter.name?.asString() ?: "", parameter.type.toTypeName()).build()
+                        ParameterSpec.builder(parameter.name?.asString() ?: "", parameter.type.toTypeName())
+                            .addModifiers(if (parameter.isVararg) listOf(KModifier.VARARG) else emptyList())
+                            .build()
                     }
                 )
                 .addCode(getImplementationContent(function))
@@ -96,11 +101,12 @@ class DaoProcessor(
             if (parameters.size != 1)
                 throw IllegalStateException("Insert operation must have exactly one parameter.")
 
+            val returnTypeReference = function.returnType
             val parameter = parameters.first()
-            val parameterName = parameter.name?.asString()
+            val parameterName = parameter.name?.asString() ?: ""
             val classDeclaration = parameter.type.resolve().declaration as KSClassDeclaration
 
-            if (function.returnType?.resolve() != parameter.type.resolve())
+            if (returnTypeReference?.resolve() != parameter.type.resolve() && !parameter.isVararg)
                 throw IllegalStateException("Insert operation must return type ${parameter.type}")
 
             if (!classDeclaration.isAnnotationPresent(Entity::class))
@@ -111,7 +117,7 @@ class DaoProcessor(
             val primaryKeyName = classDeclaration.getDeclaredProperties()
                 .firstOrNull { it.isAnnotationPresent(PrimaryKey::class) }
                 ?.simpleName
-                ?.asString()
+                ?.asString() ?: ""
 
             classDeclaration.getDeclaredProperties().forEach { property ->
 
@@ -124,13 +130,58 @@ class DaoProcessor(
 
             }
 
-            return """
+            if (parameter.isVararg)
+                return getInsertManyImplementation(tableName, primaryKeyName, parameterName, parameter.type.resolve().toString(), properties, classDeclaration)
+
+            return getInsertOneImplementation(tableName, primaryKeyName, parameterName, properties, classDeclaration)
+        }
+
+        @OptIn(KspExperimental::class)
+        private fun getInsertManyImplementation(tableName: String, primaryKeyName: String, parameterName: String, parameterTypeName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+            """
                 
                 |dataSource.getConnection().use { connection ->
                 |    
-                |    connection.prepareStatement("INSERT INTO $tableName ($primaryKeyName, ${properties.keys.joinToString(", ")}) VALUES(${"?, ".repeat(properties.size)}?) ON CONFLICT ($primaryKeyName) DO UPDATE SET ${properties.values.joinToString(", ")}").use { preparedStatement ->
+                |    connection.prepareStatement("INSERT INTO $tableName (${properties.keys.joinToString(", ")}) VALUES(${"?, ".repeat(properties.size - 1)}?) ON CONFLICT ($primaryKeyName) DO UPDATE SET ${properties.values.joinToString(", ")}", Statement.RETURN_GENERATED_KEYS).use { preparedStatement ->
                 |    
-                |       ${classDeclaration.getDeclaredProperties().mapIndexed() { index, property -> "preparedStatement.setObject($index, ${parameterName}.${property.simpleName.asString()})" }.joinToString("\n\t   ")}
+                |       for (item in $parameterName) {
+                |       
+                |           ${classDeclaration.getDeclaredProperties().filter { !it.isAnnotationPresent(PrimaryKey::class) }.mapIndexed() { index, property -> "preparedStatement.setObject(${index + 1}, item.${property.simpleName.asString()})" }.joinToString("\n\t\t   ")}   
+                |           
+                |           preparedStatement.addBatch()
+                |       }
+                |       
+                |       preparedStatement.executeBatch()
+                |       val generatedItems = mutableListOf<$parameterTypeName>()
+                |       
+                |       preparedStatement.generatedKeys.use { resultSet ->
+                |       
+                |           var index = 0
+                |           
+                |           while (resultSet.next()) {
+                |               val id = resultSet.getLong(1)
+                |               val item = ${parameterName}[index++]
+                |               generatedItems.add(item.copy($primaryKeyName = id))
+                |           }
+                |       
+                |           return generatedItems
+                |       }
+                |       
+                |    }
+                |    
+                |}
+                
+            """.trimMargin()
+
+        @OptIn(KspExperimental::class)
+        private fun getInsertOneImplementation(tableName: String, primaryKeyName: String, parameterName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+            """
+                
+                |dataSource.getConnection().use { connection ->
+                |    
+                |    connection.prepareStatement("INSERT INTO $tableName (${properties.keys.joinToString(", ")}) VALUES(${"?, ".repeat(properties.size - 1)}?) ON CONFLICT ($primaryKeyName) DO UPDATE SET ${properties.values.joinToString(", ")}", Statement.RETURN_GENERATED_KEYS).use { preparedStatement ->
+                |    
+                |       ${classDeclaration.getDeclaredProperties().filter { !it.isAnnotationPresent(PrimaryKey::class) }.mapIndexed() { index, property -> "preparedStatement.setObject(${index + 1}, ${parameterName}.${property.simpleName.asString()})" }.joinToString("\n\t   ")}
                 |       
                 |       val rowsAffected = preparedStatement.executeUpdate()
                 |       
@@ -140,7 +191,7 @@ class DaoProcessor(
                 |           
                 |           if (generatedKeys.next()) {
                 |           
-                |               val id = generatedKeys.getLong(1)
+                |               val id = generatedKeys.getLong("$primaryKeyName")
                 |           
                 |               return ${parameterName}.copy($primaryKeyName = id)
                 |           }
@@ -153,7 +204,6 @@ class DaoProcessor(
                 |}
                 
             """.trimMargin()
-        }
 
     }
 
