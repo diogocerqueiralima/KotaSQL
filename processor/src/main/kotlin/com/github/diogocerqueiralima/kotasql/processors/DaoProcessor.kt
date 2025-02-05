@@ -106,18 +106,55 @@ class DaoProcessor(
             val queryFromAnnotation = queryAnnotation.value
             val query = queryFromAnnotation.replace(Regex(":\\w+"), "?")
             val queryParameters = extractParametersFromQuery(queryFromAnnotation)
-            val collectionType = resolver.getClassDeclarationByName(Collection::class.qualifiedName!!)!!.asStarProjectedType()
+            val listType = resolver.getClassDeclarationByName(List::class.qualifiedName!!)!!.asStarProjectedType()
 
-            if (collectionType.isAssignableFrom(returnType))
-                return getQueryManyImplementationContent(function)
+            if (listType.isAssignableFrom(returnType))
+                return getQueryManyImplementationContent(function, query, queryParameters)
 
             return getQueryOneImplementationContent(function, query, queryParameters)
         }
 
-        private fun getQueryManyImplementationContent(function: KSFunctionDeclaration): String {
+        private fun getQueryManyImplementationContent(function: KSFunctionDeclaration, query: String, queryParameters: List<String>): String {
+
+            val listType = function.returnType!!.resolve()
+            val classDeclaration = listType.arguments.first().type!!.resolve().declaration as KSClassDeclaration
+            val className = classDeclaration.simpleName.asString()
+
+            val propertiesMap = classDeclaration.getDeclaredProperties().map { property ->
+                property.type.resolve().declaration.simpleName.asString()
+            }
+
             return """
-                | return null
+                |
+                |dataSource.getConnection().use { connection ->
+                |
+                |   connection.prepareStatement("$query").use { preparedStatement ->
+                |   
+                |       ${queryParameters.mapIndexed { index, parameter -> "preparedStatement.setObject(${index + 1}, $parameter)" }.joinToString("\n\t   ")}
+                |       
+                |       preparedStatement.executeQuery().use { resultSet -> 
+                |       
+                |           val items = mutableListOf<$className>()
+                |           
+                |           while (resultSet.next()) {
+                |           
+                |               items.add(
+                |                   $className(
+                |                       ${propertiesMap.mapIndexed { index, s -> "resultSet.getObject(${index + 1}) as $s" }.joinToString(",\n\t\t\t\t\t   ")}
+                |                   )
+                |               )
+                |               
+                |           }
+                |       
+                |           return items
+                |       }
+                |   
+                |   }
+                |
+                |}
+                |
             """.trimMargin()
+
         }
 
         private fun getQueryOneImplementationContent(function: KSFunctionDeclaration, query: String, queryParameters: List<String>): String {
@@ -130,28 +167,28 @@ class DaoProcessor(
             }
 
             return """
-        |
-        |dataSource.getConnection().use { connection ->
-        |
-        |   connection.prepareStatement("$query").use { preparedStatement ->
-        |   
-        |       ${queryParameters.mapIndexed { index, parameter -> "preparedStatement.setObject(${index + 1}, $parameter)" }.joinToString("\n\t   ")}
-        |       
-        |       preparedStatement.executeQuery().use { resultSet -> 
-        |           
-        |           if (!resultSet.next()) return null
-        |           
-        |           return $className(
-        |               ${propertiesMap.mapIndexed { index, s -> "resultSet.getObject(${index + 1}) as $s" }.joinToString(",\n\t\t\t   ")}
-        |           )
-        |       
-        |       }
-        |   
-        |   }
-        |
-        |}
-        |
-    """.trimMargin()
+                |
+                |dataSource.getConnection().use { connection ->
+                |
+                |   connection.prepareStatement("$query").use { preparedStatement ->
+                |   
+                |       ${queryParameters.mapIndexed { index, parameter -> "preparedStatement.setObject(${index + 1}, $parameter)" }.joinToString("\n\t   ")}
+                |       
+                |       preparedStatement.executeQuery().use { resultSet -> 
+                |           
+                |           if (!resultSet.next()) return null
+                |           
+                |           return $className(
+                |               ${propertiesMap.mapIndexed { index, s -> "resultSet.getObject(${index + 1}) as $s" }.joinToString(",\n\t\t\t   ")}
+                |           )
+                |       
+                |       }
+                |   
+                |   }
+                |
+                |}
+                |
+            """.trimMargin()
         }
 
         private fun extractParametersFromQuery(query: String): List<String> {

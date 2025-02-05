@@ -40,12 +40,18 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE id = :id")
     fun findById(id: Long): User?
 
+    @Query("SELECT * FROM users ORDER BY id DESC")
+    fun findAll(): List<User>
+
+    @Query("SELECT * FROM users WHERE age < :age")
+    fun findAllByAgeLowerThan(age: Int): List<User>
+
 }
 
 fun main() {
 
     val userDao = db.userDao()
-    val user = userDao.findById(1)
+    val users = userDao.findAllByAgeLowerThan(23)
 
-    println(user)
+    println(users)
 }
