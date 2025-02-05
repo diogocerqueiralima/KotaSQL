@@ -5,5 +5,5 @@ gradlew.bat
 gradlew
 .gradle
 .kotlin
-/processor/build
-/example/build
+/kota-sql-processor/build
+/kota-sql-example/build

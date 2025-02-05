@@ -11,10 +11,11 @@ repositories {
 }
 
 dependencies {
+    implementation(libs.logback)
     implementation(libs.postgresql)
     implementation(libs.hikaricp)
-    implementation(project(":processor"))
-    ksp(project(":processor"))
+    implementation(project(":kota-sql-processor"))
+    ksp(project(":kota-sql-processor"))
 }
 
 kotlin {
