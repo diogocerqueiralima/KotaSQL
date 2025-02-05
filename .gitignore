@@ -4,5 +4,6 @@ gradle/wrapper
 gradlew.bat
 gradlew
 .gradle
+.kotlin
 /processor/build
 /example/build
