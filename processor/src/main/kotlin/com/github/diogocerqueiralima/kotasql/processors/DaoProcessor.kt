@@ -85,12 +85,45 @@ class DaoProcessor(
                 .build()
 
         @OptIn(KspExperimental::class)
-        private fun getImplementationContent(function: KSFunctionDeclaration): String {
+        private fun getImplementationContent(function: KSFunctionDeclaration) =
+            when {
+                function.isAnnotationPresent(Insert::class) -> getInsertImplementationContent(function)
+                function.isAnnotationPresent(Delete::class) -> getDeleteImplementationContent(function)
+                else -> throw IllegalStateException("There is no SQL operation")
+            }
 
-            if (function.isAnnotationPresent(Insert::class))
-                return getInsertImplementationContent(function)
+        @OptIn(KspExperimental::class)
+        private fun getDeleteImplementationContent(function: KSFunctionDeclaration): String {
 
-            throw IllegalStateException("There is no SQL operation")
+            val parameters = function.parameters
+
+            if (parameters.size != 1)
+                throw IllegalStateException("Delete operation must have exactly one parameter.")
+
+            val parameter = parameters.first()
+            val parameterName = parameter.name?.asString() ?: ""
+            val classDeclaration = parameter.type.resolve().declaration as KSClassDeclaration
+            val tableName = classDeclaration.getAnnotationsByType(Entity::class).first().tableName
+            val primaryKeyName = classDeclaration.getDeclaredProperties()
+                .first { it.isAnnotationPresent(PrimaryKey::class) }
+                .simpleName
+                .asString()
+
+            return """
+                |
+                |dataSource.getConnection().use { connection ->
+                |
+                |   connection.prepareStatement("DELETE FROM $tableName WHERE $primaryKeyName = ?").use { preparedStatement ->
+                |   
+                |       preparedStatement.setObject(1, ${parameterName}.$primaryKeyName)
+                |       preparedStatement.executeUpdate()
+                |    
+                |   }
+                |
+                |}
+                |
+            """.trimMargin()
+
         }
 
         @OptIn(KspExperimental::class)
@@ -109,15 +142,12 @@ class DaoProcessor(
             if (returnTypeReference?.resolve() != parameter.type.resolve() && !parameter.isVararg)
                 throw IllegalStateException("Insert operation must return type ${parameter.type}")
 
-            if (!classDeclaration.isAnnotationPresent(Entity::class))
-                throw IllegalStateException("You should insert an Entity on database")
-
             val properties = mutableMapOf<String, String>()
             val tableName = classDeclaration.getAnnotationsByType(Entity::class).first().tableName
             val primaryKeyName = classDeclaration.getDeclaredProperties()
-                .firstOrNull { it.isAnnotationPresent(PrimaryKey::class) }
-                ?.simpleName
-                ?.asString() ?: ""
+                .first { it.isAnnotationPresent(PrimaryKey::class) }
+                .simpleName
+                .asString() ?: ""
 
             classDeclaration.getDeclaredProperties().forEach { property ->
 

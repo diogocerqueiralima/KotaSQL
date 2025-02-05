@@ -34,18 +34,14 @@ interface UserDao {
     @Insert
     fun insertMany(vararg users: User): List<User>
 
+    @Delete
+    fun delete(user: User)
+
 }
 
 fun main() {
 
     val userDao = db.userDao()
-    val user = userDao.insert(User(firstName = "João", age = 20))
 
-    val users = userDao.insertMany(
-        User(firstName = "Maria", age = 21),
-        User(firstName = "Joana", age = 21)
-    )
-
-    println(user)
-    println(users)
+    userDao.delete(User(id = 6, firstName = "Joana", age = 21))
 }
