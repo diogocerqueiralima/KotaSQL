@@ -213,7 +213,14 @@ class DaoProcessor(
                 .simpleName
                 .asString()
 
-            return """
+            if (parameter.isVararg)
+                return getDeleteManyImplementationContent(tableName, primaryKeyName, parameterName)
+
+            return getDeleteOneImplementationContent(tableName, primaryKeyName, parameterName)
+        }
+
+        private fun getDeleteOneImplementationContent(tableName: String, primaryKeyName: String, parameterName: String) =
+            """
                 |
                 |dataSource.getConnection().use { connection ->
                 |
@@ -228,7 +235,25 @@ class DaoProcessor(
                 |
             """.trimMargin()
 
-        }
+        private fun getDeleteManyImplementationContent(tableName: String, primaryKeyName: String, parameterName: String) =
+            """
+                |
+                |dataSource.getConnection().use { connection ->
+                |
+                |   connection.prepareStatement("DELETE FROM $tableName WHERE $primaryKeyName = ?").use { preparedStatement ->
+                |   
+                |       for (item in $parameterName) {
+                |           preparedStatement.setObject(1, item.$primaryKeyName)
+            |               preparedStatement.addBatch()
+                |       }
+                |       
+                |       preparedStatement.executeBatch()
+                |    
+                |   }
+                |
+                |}
+                |
+            """.trimMargin()
 
         @OptIn(KspExperimental::class)
         private fun getInsertImplementationContent(function: KSFunctionDeclaration): String {
