@@ -56,7 +56,7 @@ class EntityProcessor(
             val autoGenerate = primaryKeyAnnotation.autoGenerate
             val primaryKeyColumnName = primaryKeyAnnotation.name.let { it.ifBlank { primaryKeyProperty.simpleName.asString() } }
 
-            columns.add("$primaryKeyColumnName ${if (autoGenerate) "SERIAL" else ""} PRIMARY KEY")
+            columns.add("$primaryKeyColumnName ${if (autoGenerate) "BIGSERIAL" else ""} PRIMARY KEY")
 
             properties.forEach { property ->
 

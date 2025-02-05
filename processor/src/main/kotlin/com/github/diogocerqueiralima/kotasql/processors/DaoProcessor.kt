@@ -5,6 +5,7 @@ import com.google.devtools.ksp.*
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
@@ -25,12 +26,16 @@ class DaoProcessor(
 
         symbols
             .filter { it is KSClassDeclaration && it.validate() }
-            .forEach { it.accept(DaoVisitor(), Unit) }
+            .forEach { it.accept(DaoVisitor(resolver), Unit) }
 
         return ret
     }
 
-    inner class DaoVisitor : KSVisitorVoid() {
+    inner class DaoVisitor(
+
+        private val resolver: Resolver
+
+    ) : KSVisitorVoid() {
 
         override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
 
@@ -89,8 +94,70 @@ class DaoProcessor(
             when {
                 function.isAnnotationPresent(Insert::class) -> getInsertImplementationContent(function)
                 function.isAnnotationPresent(Delete::class) -> getDeleteImplementationContent(function)
+                function.isAnnotationPresent(Query::class) -> getQueryImplementationContent(function)
                 else -> throw IllegalStateException("There is no SQL operation")
             }
+
+        @OptIn(KspExperimental::class)
+        private fun getQueryImplementationContent(function: KSFunctionDeclaration): String {
+
+            val returnType = function.returnType!!.resolve()
+            val queryAnnotation = function.getAnnotationsByType(Query::class).first()
+            val queryFromAnnotation = queryAnnotation.value
+            val query = queryFromAnnotation.replace(Regex(":\\w+"), "?")
+            val queryParameters = extractParametersFromQuery(queryFromAnnotation)
+            val collectionType = resolver.getClassDeclarationByName(Collection::class.qualifiedName!!)!!.asStarProjectedType()
+
+            if (collectionType.isAssignableFrom(returnType))
+                return getQueryManyImplementationContent(function)
+
+            return getQueryOneImplementationContent(function, query, queryParameters)
+        }
+
+        private fun getQueryManyImplementationContent(function: KSFunctionDeclaration): String {
+            return """
+                | return null
+            """.trimMargin()
+        }
+
+        private fun getQueryOneImplementationContent(function: KSFunctionDeclaration, query: String, queryParameters: List<String>): String {
+
+            val classDeclaration = function.returnType!!.resolve().declaration as KSClassDeclaration
+            val className = classDeclaration.simpleName.asString()
+
+            val propertiesMap = classDeclaration.getDeclaredProperties().map { property ->
+                property.type.resolve().declaration.simpleName.asString()
+            }
+
+            return """
+        |
+        |dataSource.getConnection().use { connection ->
+        |
+        |   connection.prepareStatement("$query").use { preparedStatement ->
+        |   
+        |       ${queryParameters.mapIndexed { index, parameter -> "preparedStatement.setObject(${index + 1}, $parameter)" }.joinToString("\n\t   ")}
+        |       
+        |       preparedStatement.executeQuery().use { resultSet -> 
+        |           
+        |           if (!resultSet.next()) return null
+        |           
+        |           return $className(
+        |               ${propertiesMap.mapIndexed { index, s -> "resultSet.getObject(${index + 1}) as $s" }.joinToString(",\n\t\t\t   ")}
+        |           )
+        |       
+        |       }
+        |   
+        |   }
+        |
+        |}
+        |
+    """.trimMargin()
+        }
+
+        private fun extractParametersFromQuery(query: String): List<String> {
+            val regex = Regex(":([a-zA-Z_][a-zA-Z0-9_]*)")
+            return regex.findAll(query).map { it.groupValues[1] }.toList()
+        }
 
         @OptIn(KspExperimental::class)
         private fun getDeleteImplementationContent(function: KSFunctionDeclaration): String {

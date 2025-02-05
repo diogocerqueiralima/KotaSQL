@@ -37,11 +37,15 @@ interface UserDao {
     @Delete
     fun delete(user: User)
 
+    @Query("SELECT * FROM users WHERE id = :id")
+    fun findById(id: Long): User?
+
 }
 
 fun main() {
 
     val userDao = db.userDao()
+    val user = userDao.findById(1)
 
-    userDao.delete(User(id = 6, firstName = "Joana", age = 21))
+    println(user)
 }
