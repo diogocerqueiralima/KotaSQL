@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.1.0"
+    `maven-publish`
 }
 
 group = "com.github.diogocerqueiralima"
@@ -23,4 +24,28 @@ tasks.test {
 
 kotlin {
     jvmToolchain(23)
+}
+
+publishing {
+
+    repositories {
+        maven {
+            url = uri("https://maven.pkg.github.com/diogocerqueiralima/KotaSQL")
+            credentials {
+                username = System.getenv("USERNAME_GITHUB")
+                password = System.getenv("TOKEN_GITHUB")
+            }
+        }
+    }
+
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = project.group.toString()
+            artifactId = project.name
+            version = project.version.toString()
+
+            from(components["java"])
+        }
+    }
+
 }
