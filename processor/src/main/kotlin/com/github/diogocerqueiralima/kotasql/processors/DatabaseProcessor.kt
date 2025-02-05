@@ -14,14 +14,11 @@ import com.squareup.kotlinpoet.ksp.toTypeName
 import com.squareup.kotlinpoet.ksp.writeTo
 
 class DatabaseProcessor(
-
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger
-
 ) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-
         val symbols = resolver.getSymbolsWithAnnotation(Database::class.java.name)
         val ret = symbols.filter { !it.validate() }.toList()
 
@@ -64,24 +61,6 @@ class DatabaseProcessor(
                         .addStatement("dataSource.password = password")
                         .addStatement("dataSource.driverClassName = \"org.postgresql.Driver\"")
                         .addStatement("initializeDatabase()")
-                        .build()
-                )
-                .addProperty(
-                    PropertySpec.builder("url", String::class)
-                        .initializer("url")
-                        .addModifiers(KModifier.PRIVATE)
-                        .build()
-                )
-                .addProperty(
-                    PropertySpec.builder("username", String::class)
-                        .initializer("username")
-                        .addModifiers(KModifier.PRIVATE)
-                        .build()
-                )
-                .addProperty(
-                    PropertySpec.builder("password", String::class)
-                        .initializer("password")
-                        .addModifiers(KModifier.PRIVATE)
                         .build()
                 )
                 .addFunctions(
