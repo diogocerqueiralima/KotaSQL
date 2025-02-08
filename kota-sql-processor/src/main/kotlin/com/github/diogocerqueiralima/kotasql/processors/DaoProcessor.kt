@@ -273,10 +273,9 @@ class DaoProcessor(
 
             val properties = mutableMapOf<String, String>()
             val tableName = classDeclaration.getAnnotationsByType(Entity::class).first().tableName
-            val primaryKeyName = classDeclaration.getDeclaredProperties()
-                .first { it.isAnnotationPresent(PrimaryKey::class) }
-                .simpleName
-                .asString() ?: ""
+            val primaryKeyProperty = classDeclaration.getDeclaredProperties().first { it.isAnnotationPresent(PrimaryKey::class) }
+            val primaryKey = primaryKeyProperty.getAnnotationsByType(PrimaryKey::class).first()
+            val primaryKeyName = primaryKeyProperty.simpleName.asString()
 
             classDeclaration.getDeclaredProperties().forEach { property ->
 
@@ -290,13 +289,17 @@ class DaoProcessor(
             }
 
             if (parameter.isVararg)
-                return getInsertManyImplementation(tableName, primaryKeyName, parameterName, parameter.type.resolve().toString(), properties, classDeclaration)
+                return if (primaryKey.autoGenerate)
+                    getInsertManyAutoGenerateImplementation(tableName, primaryKeyName, parameterName, parameter.type.resolve().toString(), properties, classDeclaration)
+                else getInsertManyImplementation(tableName, primaryKeyName, parameterName, parameter.type.resolve().toString(), properties, classDeclaration)
 
-            return getInsertOneImplementation(tableName, primaryKeyName, parameterName, properties, classDeclaration)
+            return if (primaryKey.autoGenerate)
+                getInsertOneAutoGenerateImplementation(tableName, primaryKeyName, parameterName, properties, classDeclaration)
+            else getInsertOneImplementation(tableName, primaryKeyName, parameterName, properties, classDeclaration)
         }
 
         @OptIn(KspExperimental::class)
-        private fun getInsertManyImplementation(tableName: String, primaryKeyName: String, parameterName: String, parameterTypeName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+        private fun getInsertManyAutoGenerateImplementation(tableName: String, primaryKeyName: String, parameterName: String, parameterTypeName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
             """
                 
                 |dataSource.getConnection().use { connection ->
@@ -311,6 +314,7 @@ class DaoProcessor(
                 |       }
                 |       
                 |       preparedStatement.executeBatch()
+                |       
                 |       val generatedItems = mutableListOf<$parameterTypeName>()
                 |       
                 |       preparedStatement.generatedKeys.use { resultSet ->
@@ -332,8 +336,32 @@ class DaoProcessor(
                 
             """.trimMargin()
 
-        @OptIn(KspExperimental::class)
-        private fun getInsertOneImplementation(tableName: String, primaryKeyName: String, parameterName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+        private fun getInsertManyImplementation(tableName: String, primaryKeyName: String, parameterName: String, parameterTypeName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+            """
+                
+                |dataSource.getConnection().use { connection ->
+                |    
+                |    connection.prepareStatement("INSERT INTO $tableName ($primaryKeyName, ${properties.keys.joinToString(", ")}) VALUES(${"?, ".repeat(properties.size)}?) ON CONFLICT ($primaryKeyName) DO UPDATE SET ${properties.values.joinToString(", ")}", Statement.RETURN_GENERATED_KEYS).use { preparedStatement ->
+                |    
+                |       for (item in $parameterName) {
+                |       
+                |           ${classDeclaration.getDeclaredProperties().mapIndexed() { index, property -> "preparedStatement.setObject(${index + 1}, item.${property.simpleName.asString()})" }.joinToString("\n\t\t   ")}   
+                |           
+                |           preparedStatement.addBatch()
+                |       }
+                |       
+                |       preparedStatement.executeBatch()
+                |       
+                |       return $parameterName
+                |       
+                |    }
+                |    
+                |}
+                
+            """.trimMargin()
+
+            @OptIn(KspExperimental::class)
+        private fun getInsertOneAutoGenerateImplementation(tableName: String, primaryKeyName: String, parameterName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
             """
                 
                 |dataSource.getConnection().use { connection ->
@@ -365,6 +393,25 @@ class DaoProcessor(
             """.trimMargin()
 
     }
+
+    private fun getInsertOneImplementation(tableName: String, primaryKeyName: String, parameterName: String, properties: Map<String, String>, classDeclaration: KSClassDeclaration) =
+        """
+                
+                |dataSource.getConnection().use { connection ->
+                |    
+                |    connection.prepareStatement("INSERT INTO $tableName ($primaryKeyName, ${properties.keys.joinToString(", ")}) VALUES(${"?, ".repeat(properties.size)}?) ON CONFLICT ($primaryKeyName) DO UPDATE SET ${properties.values.joinToString(", ")}", Statement.RETURN_GENERATED_KEYS).use { preparedStatement ->
+                |    
+                |       ${classDeclaration.getDeclaredProperties().mapIndexed() { index, property -> "preparedStatement.setObject(${index + 1}, ${parameterName}.${property.simpleName.asString()})" }.joinToString("\n\t   ")}
+                |       
+                |       preparedStatement.executeUpdate()
+                |     
+                |       return $parameterName
+                |    }
+                |    
+                |}
+                
+            """.trimMargin()
+
 
 }
 
