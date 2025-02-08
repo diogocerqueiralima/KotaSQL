@@ -352,7 +352,7 @@ class DaoProcessor(
                 |       
                 |       preparedStatement.executeBatch()
                 |       
-                |       return $parameterName
+                |       return ${parameterName}.toList()
                 |       
                 |    }
                 |    

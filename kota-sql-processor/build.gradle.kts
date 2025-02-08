@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.github.diogocerqueiralima"
-version = "1.0.2"
+version = "1.0.6"
 
 repositories {
     mavenCentral()
@@ -23,7 +23,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(23)
+    jvmToolchain(21)
 }
 
 publishing {

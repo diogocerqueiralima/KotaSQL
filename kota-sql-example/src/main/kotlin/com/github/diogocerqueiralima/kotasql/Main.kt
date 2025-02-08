@@ -14,8 +14,8 @@ abstract class MyDatabase : KotaSQL() {
 @Entity(tableName = "users")
 data class User(
 
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
+    @PrimaryKey(autoGenerate = false)
+    val name: String,
 
     @Column(name = "first_name", unique = true)
     val firstName: String,
@@ -67,10 +67,10 @@ fun main() {
 
     println(userDao.findAll())
 
-    userDao.deleteMany(
+    /*userDao.deleteMany(
         User(id = 1, firstName = "Diogo", age = 20),
         User(id = 2, firstName = "Joana", age = 21)
-    )
+    )*/
 
     println(userDao.findAll())
 }

@@ -56,7 +56,7 @@ class EntityProcessor(
             val autoGenerate = primaryKeyAnnotation.autoGenerate
             val primaryKeyColumnName = primaryKeyAnnotation.name.let { it.ifBlank { primaryKeyProperty.simpleName.asString() } }
 
-            columns.add("$primaryKeyColumnName ${if (autoGenerate) "BIGSERIAL" else ""} PRIMARY KEY")
+            columns.add("$primaryKeyColumnName ${if (autoGenerate) "BIGSERIAL" else getDataType(primaryKeyProperty.type.resolve()).value} PRIMARY KEY")
 
             properties.forEach { property ->
 
@@ -65,7 +65,7 @@ class EntityProcessor(
                 val columnAnnotation = property.getAnnotationsByType(Column::class).firstOrNull() ?: return@forEach
 
                 val columnName = columnAnnotation.name.let { it.ifBlank { property.simpleName.asString() } }
-                val columnType = getDataType(property.type.resolve())
+                val columnType = getDataType(property.type.resolve()).value
                 val columnNullable = columnAnnotation.nullable
                 val columnUnique = columnAnnotation.unique
 
@@ -91,7 +91,7 @@ class EntityProcessor(
                 "kotlin.Long" -> DataType.BIGINT
                 "kotlin.Double" -> DataType.DOUBLE_PRECISION
                 "kotlin.Boolean" -> DataType.BOOLEAN
-                else -> DataType.TEXT
+                else -> DataType.VARCHAR
             }
 
     }
@@ -105,12 +105,12 @@ class EntityProcessorProvider : SymbolProcessorProvider {
 
 }
 
-enum class DataType {
+enum class DataType(val value: String) {
 
-    TEXT,
-    INTEGER,
-    BIGINT,
-    DOUBLE_PRECISION,
-    BOOLEAN
+    VARCHAR("VARCHAR(255)"),
+    INTEGER("INTEGER"),
+    BIGINT("BIGINT"),
+    DOUBLE_PRECISION("DOUBLE PRECISION"),
+    BOOLEAN("BOOLEAN")
 
 }

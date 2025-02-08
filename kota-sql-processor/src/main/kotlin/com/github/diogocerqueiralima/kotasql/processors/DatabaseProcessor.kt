@@ -90,26 +90,32 @@ class DatabaseProcessor(
                 .addCode(
                     """
                         |   
-                        |   val folder = this.javaClass.classLoader.getResource("generated/sql")
-                        |   val files = File(folder.toURI()).listFiles()
+                        |   val resourcePath = "generated/sql"
+                        |   val resource = this.javaClass.classLoader.getResource(resourcePath)
                         |   
-                        |   files
-                        |       .filter { it.extension == "sql" }
-                        |       .forEach { file -> 
+                        |   if (resource != null && resource.protocol == "jar") {
+                        |       val connection = resource.openConnection() as java.net.JarURLConnection
+                        |       val jarFile = connection.jarFile
+                        |   
+                        |       val entries = jarFile.entries()
+                        |       while (entries.hasMoreElements()) {
+                        |           val entry = entries.nextElement()
                         |           
-                        |           val command = file.readText()
-                        |           
-                        |           dataSource.getConnection().use { connection ->
-                        |           
-                        |               connection.prepareStatement(command).use { preparedStatement ->
-                        |               
-                        |                   preparedStatement.executeUpdate()
-                        |               
+                        |           if (entry.name.startsWith(resourcePath) && entry.name.endsWith(".sql")) {
+                        |   
+                        |               val inputStream = this.javaClass.classLoader.getResourceAsStream(entry.name)
+                        |               val command = inputStream?.bufferedReader()?.use { it.readText() }
+                        |   
+                        |               if (command != null) {
+                        |                   dataSource.getConnection().use { connection ->
+                        |                       connection.prepareStatement(command).use { preparedStatement ->
+                        |                           preparedStatement.executeUpdate()
+                        |                       }
+                        |                   }
                         |               }
-                        |           
                         |           }
-                        |           
                         |       }
+                        |   }
                         |
                     """.trimMargin()
                 )
